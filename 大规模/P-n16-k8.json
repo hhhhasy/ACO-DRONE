@@ -1,0 +1,122 @@
+{
+  "the_number_of_dronescarried_by_each_truck": 2,
+  "the_number_of_trucks": 2,
+  "the_maximum_capacity_of_the_truck": 1000000.0,
+  "the_maximum_capacity_of_the_drone": 3.0,
+  "the_maximum_distance_of_the_truck": 1000000.0,
+  "the_maximum_distance_of_the_drone": 1000000000.0,
+  "the_speed_of_the_truck": 8.333333333333334,
+  "the_speed_of_the_drone": 16.666666666666668,
+  "number_of_nodes": 16,
+  "depot": {
+    "x": 3000.0,
+    "y": 4000.0,
+    "name": "depot"
+  },
+  "locations": [
+    {
+      "x": 3700.0,
+      "y": 5200.0,
+      "name": "loc1",
+      "demand": 1.532258064516129
+    },
+    {
+      "x": 4900.0,
+      "y": 4900.0,
+      "name": "loc2",
+      "demand": 2.4193548387096775
+    },
+    {
+      "x": 5200.0,
+      "y": 6400.0,
+      "name": "loc3",
+      "demand": 1.2903225806451613
+    },
+    {
+      "x": 3100.0,
+      "y": 6200.0,
+      "name": "loc4",
+      "demand": 1.8548387096774193
+    },
+    {
+      "x": 5200.0,
+      "y": 3300.0,
+      "name": "loc5",
+      "demand": 0.8870967741935484
+    },
+    {
+      "x": 4200.0,
+      "y": 4100.0,
+      "name": "loc6",
+      "demand": 2.5
+    },
+    {
+      "x": 5200.0,
+      "y": 4100.0,
+      "name": "loc7",
+      "demand": 1.2096774193548387
+    },
+    {
+      "x": 5700.0,
+      "y": 5800.0,
+      "name": "loc8",
+      "demand": 2.258064516129032
+    },
+    {
+      "x": 6200.0,
+      "y": 4200.0,
+      "name": "loc9",
+      "demand": 0.6451612903225806
+    },
+    {
+      "x": 4200.0,
+      "y": 5700.0,
+      "name": "loc10",
+      "demand": 0.6451612903225806
+    },
+    {
+      "x": 2700.0,
+      "y": 6800.0,
+      "name": "loc11",
+      "demand": 0.564516129032258
+    },
+    {
+      "x": 4300.0,
+      "y": 6700.0,
+      "name": "loc12",
+      "demand": 1.129032258064516
+    },
+    {
+      "x": 5800.0,
+      "y": 4800.0,
+      "name": "loc13",
+      "demand": 0.4838709677419355
+    },
+    {
+      "x": 5800.0,
+      "y": 2700.0,
+      "name": "loc14",
+      "demand": 1.532258064516129
+    },
+    {
+      "x": 3700.0,
+      "y": 6900.0,
+      "name": "loc15",
+      "demand": 0.8870967741935484
+    }
+  ],
+  "physicalized": true,
+  "coordinate_unit": "m",
+  "demand_unit": "kg",
+  "physicalization": {
+    "coordinate_scale": 100.0,
+    "demand_scale": 0.08064516129032258,
+    "max_raw_demand": 31.0,
+    "max_scaled_demand_kg": 2.5,
+    "truck_speed_m_s": 8.333333333333334,
+    "drone_speed_m_s": 16.666666666666668,
+    "drone_payload_capacity_kg": 3.0,
+    "legacy_drone_max_distance": 1000000000.0,
+    "note": "coordinates in m, demands in kg; drone range constraint removed (feasibility is payload + flight energy + hover energy + battery)"
+  }
+}

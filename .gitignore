@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+
+# Generated experiment outputs
+results/
+aco_results*/
+compare_results/
+time_budget_results*/
+iteration_results/
+*.zip
+
+# Separate ablation study / extra experiments
+ACO_Ablation_Study/
+convergence_experiment/
+drone_sensitivity_experiment/
