@@ -62,7 +62,7 @@ python run_sensitivity.py --algorithms ACO --seeds 13 \
 | ACO | `ProblemData.drone_battery_capacity_wh` / `drone_payload_capacity` |
 | GA | `ProblemData.drone_battery_capacity_wh` / `drone_payload_capacity` |
 | ALNS | `vrp_with_drones(..., drone_battery_capacity_wh=...)` / payload 参数 |
-| PSO | `ProblemData.drone_battery_capacity_wh` / `drone_payload_capacity`（ACO 兼容加载器） |
+| PSO | `pso_decoder.load_problem` 的 `ProblemData`；覆盖 `drone_battery_capacity_wh` / `drone_payload_capacity` |
 | VND | 复用 ALNS `vrp_with_drones` 模型 |
 
 - 任务构造、无人机预检查、解码器、`drone_physics` 能耗计算和
@@ -94,7 +94,7 @@ python run_sensitivity.py --algorithms ACO --seeds 13 \
 环境兼容处理，不改变算法逻辑；BLAS 线程固定为 1。
 
 `drone_physics.py`、`evaluator.py`、`fast_window_physics.py`、`operators.py`
-以及所有算法超参数均未修改。ACO 使用当前根版本（fixed100/κ=1）。
+以及所有算法超参数均未修改。ACO 使用当前根版本（fixed100/κ=1）；PSO 使用独立的 `pso_decoder.py` 和平衡插入初始解，不依赖 ACO 解码器。
 
 ---
 

@@ -51,6 +51,7 @@ from model import vrp_with_drones
 from aco_solver import ACOConfig, AntColonySolver, load_problem as aco_load_problem
 from ga_solver import ClassicGA, GAConfig, decode as ga_decode, load_problem as ga_load_problem
 from pso_solver import PSOConfig, ParticleSwarmSolver
+from pso_decoder import load_problem as pso_load_problem
 from vnd_solver import UserNeighborhoodVND
 
 
@@ -74,6 +75,15 @@ def apply_aco_physics(problem, battery_wh: float, payload_kg: float):
 
 def load_aco_problem(dataset_path: str, battery_wh: float, payload_kg: float):
     return apply_aco_physics(aco_load_problem(str(dataset_path)), battery_wh, payload_kg)
+
+
+def load_pso_problem(dataset_path: str, battery_wh: float, payload_kg: float):
+    # Latest PSO uses its own ProblemData/decoder; only the physics overrides
+    # are applied here, exactly like the other algorithms.
+    problem = pso_load_problem(str(dataset_path))
+    problem.drone_battery_capacity_wh = float(battery_wh)
+    problem.drone_payload_capacity = float(payload_kg)
+    return problem
 
 
 def apply_ga_physics(problem, battery_wh: float, payload_kg: float):
@@ -385,7 +395,7 @@ def _run_alns(spec: RunSpec, start: float, recorder=None) -> Dict[str, Any]:
 
 def _run_pso(spec: RunSpec, start: float, recorder=None) -> Dict[str, Any]:
     p = spec.params
-    problem = load_aco_problem(spec.dataset_path, spec.battery_wh, spec.payload_kg)
+    problem = load_pso_problem(spec.dataset_path, spec.battery_wh, spec.payload_kg)
     remaining = max(1e-9, float(spec.time_budget_seconds) - (time.perf_counter() - start))
     cfg = PSOConfig(
         swarm_size=int(p.get("swarm_size", 30)),
@@ -419,6 +429,11 @@ def _run_pso(spec: RunSpec, start: float, recorder=None) -> Dict[str, Any]:
         "evaluations": int(solver.evaluations),
         "solver_runtime_seconds": float(getattr(solver, "runtime_seconds", 0.0)),
         "swarm_size_used": int(getattr(solver, "swarm_size_used", 0)),
+        "proposals": int(getattr(solver, "proposals", 0)),
+        "cache_hits": int(getattr(solver, "cache_hits", 0)),
+        "tabu_stats": dict(getattr(solver, "tabu_stats", {})),
+        "algorithm_variant": "independent-random-key-greedy-insertion-tabu20-v3",
+        "initialization_method": "pso_balanced_insertion_drone_hints",
         "vehicle_routes": [[int(x) for x in r] for r in best.vehicle_routes],
         "drone_routes": best.drone_routes,
         "master_routes": [[int(x) for x in r] for r in best.code.master_routes],

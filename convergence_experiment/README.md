@@ -97,7 +97,7 @@ event_type
 - GA：`ClassicGA` 可选 `history_callback`；初始种群最佳与每次严格改善回调。
 - ALNS：`vrp_with_drones.local_search` 新增可选 `history_callback`；
   初始解由适配器记录，搜索中每次最佳改善回调。
-- PSO：`ParticleSwarmSolver` 可选 `history_callback`；记录 PSO 自身的初始解、每次全局最优改善和最终解。
+- PSO：使用独立的 `pso_decoder.py`；`ParticleSwarmSolver` 可选 `history_callback`，记录 PSO 自身的初始解、每次全局最优改善和最终解。
 - VND：可选 `history_callback`；初始解与每次最佳改善回调。
 
 ### 对原有代码的最小改动
@@ -121,7 +121,7 @@ event_type
 环境兼容处理，不改变算法逻辑；BLAS 线程固定为 1。
 
 `drone_physics.py`、`evaluator.py`、`fast_window_physics.py`、`operators.py`
-均未修改。ACO 使用当前根版本（fixed100/κ=1）。
+均未修改。ACO 使用当前根版本（fixed100/κ=1）；PSO 使用独立的 `pso_decoder.py`，不依赖 ACO 解码器。
 
 ---
 
