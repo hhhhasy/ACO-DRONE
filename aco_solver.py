@@ -485,7 +485,7 @@ class ACOConfig:
     # Short-term complete-ant memory.  Set False to recover the original ACS
     # construction/evaluation path for fair ablation experiments.
     tabu_enabled: bool = True
-    tabu_tenure: int = 40                 # accepted ants before entry expires
+    tabu_tenure: int = 20                 # accepted ants before entry expires
     tabu_retry_limit: int = 2            # at most 2 extra constructions per ant
     # Deterministic LRU cache of EXACT decoded solutions (0 disables cache).
     # Memory is local to one solver/instance; there are no cross-run cache hits.
@@ -651,7 +651,8 @@ class AntColonySolver:
                 if eta_d > 0.0:
                     ranked.append((float(eta_d), c))
             ranked.sort(reverse=True)
-            take = max(0, int(round(0.65 * len(ranked))))
+            # take = max(0, int(round(0.65 * len(ranked))))
+            take = len(ranked)
             loads = [0.0] * D
             for _score, c in ranked[:take]:
                 service[c] = 1

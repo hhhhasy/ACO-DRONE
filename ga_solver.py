@@ -40,6 +40,7 @@ import random
 import statistics
 import time
 import itertools
+from collections import deque
 
 import numpy as np
 
@@ -931,6 +932,48 @@ class GAConfig:
     time_limit_seconds: float = 0.0
 
 
+# Internal settings only.  Caller configuration, CLI and result schema unchanged.
+# Set _TABU_TENURE = 0 here to reproduce the original GA search path.
+_TABU_TENURE = 20
+_TABU_RETRY_LIMIT = 2
+
+
+class _RecentSolutionTabu:
+    """Generation-based tabu on recently admitted non-elite offspring.
+
+    A key admitted while constructing generation ``g+1`` from generation ``g``
+    is forbidden throughout generation g and the next ``tenure`` generations.
+    Elitism bypasses tabu entirely; tenure is NOT counted per child/evaluation.
+    """
+
+    def __init__(self, tenure: int):
+        self.tenure = max(0, int(tenure))
+        self._expires = {}
+        self._fifo = deque()
+
+    def expire(self, generation: int) -> None:
+        while self._fifo and self._fifo[0][0] <= generation:
+            expiration, key = self._fifo.popleft()
+            if self._expires.get(key) == expiration:
+                del self._expires[key]
+
+    def contains(self, key, generation: int) -> bool:
+        if not self.tenure:
+            return False
+        self.expire(generation)
+        return self._expires.get(key, -1) > generation
+
+    def add(self, key, generation: int) -> None:
+        if not self.tenure:
+            return
+        expiration = int(generation) + self.tenure + 1
+        self._expires[key] = expiration
+        self._fifo.append((expiration, key))
+
+    def __len__(self) -> int:
+        return len(self._expires)
+
+
 class ClassicGA:
     def __init__(self, problem: ProblemData, config: Optional[GAConfig] = None):
         self.problem = problem
@@ -950,6 +993,13 @@ class ClassicGA:
         # Counts exact decode/evaluator calls (cache hits are not re-evaluated).
         self.evaluation_count = 0
         self.eval_cache: Dict[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]], Tuple[float, DecodedSolution]] = {}
+        self.tabu_stats = {
+            "tabu_rejections": 0,
+            "duplicate_rejections": 0,
+            "tabu_admissions": 0,
+            "tabu_aspirations": 0,
+            "tabu_relaxations": 0,
+        }
 
     @property
     def token_set(self):
@@ -1445,6 +1495,24 @@ class ClassicGA:
             tuple(int(x) for x in c.drone[1:]),
         )
 
+    def _tabu_signature(self, c: Chromosome):
+        """Meaningful GA genome, ignoring genes that cannot affect decoding.
+
+        This decoder discards separator *positions* and performs a min-max split
+        over the giant customer order.  Likewise, a truck-served customer's
+        stored drone label does not influence the decoded solution.  Ignoring
+        these neutral genes makes the short-term tabu memory more effective.
+        The original _signature() (used for exact evaluation caching) is kept
+        unchanged for backwards compatibility.
+        """
+        order = tuple(int(x) for x in c.route_string if int(x) > 0)
+        service = tuple(int(x) for x in c.service[1:])
+        drones = tuple(
+            int(c.drone[idx]) if int(c.service[idx]) == 1 else -1
+            for idx in range(1, self.problem.num_customers + 1)
+        )
+        return order, service, drones
+
     def _deadline_reached(self, started: float) -> bool:
         """True once the ``time_limit_seconds`` budget is spent (0.0 = no limit)."""
         return (
@@ -1458,6 +1526,9 @@ class ClassicGA:
         started = time.perf_counter()
         self.time_limit_hit = False
         self.evaluation_count = 0
+        # Reset per-run tabu state (important if solve() is called repeatedly).
+        self.tabu_stats = {key: 0 for key in self.tabu_stats}
+        tabu = _RecentSolutionTabu(_TABU_TENURE) if _TABU_TENURE > 0 else None
         pop = self.initial_population()
 
         # Initial-population evaluation is by far the most expensive step on the
@@ -1491,6 +1562,8 @@ class ClassicGA:
             else range(self.cfg.generations + 1)
         )
         for gen in generation_source:
+            if tabu is not None:
+                tabu.expire(gen)
             # Wall-clock budget, checked once per generation.  The population
             # that was just evaluated is complete, so the incumbent stays valid.
             if self._deadline_reached(started):
@@ -1545,6 +1618,9 @@ class ClassicGA:
             generation_finite_mean = statistics.fmean(finite) if finite else pop[0].fitness
             next_pop = [pop[i].clone() for i in range(self.cfg.elite_size)]
             seen = {self._signature(x) for x in next_pop}
+            # Elite preservation is unconditional: tabu applies only to newly
+            # generated offspring and immigrants, not elite clones.
+            tabu_seen = {self._tabu_signature(x) for x in next_pop} if tabu is not None else None
             immigrant_count = int(round(immigrant_rate * self.cfg.population_size))
             target_children = max(self.cfg.elite_size, self.cfg.population_size - immigrant_count)
 
@@ -1576,28 +1652,101 @@ class ClassicGA:
                 inten = child_intensity(pa, pb)
                 self.mutate(ca, inten)
                 self.mutate(cb, inten)
-                self.evaluate(ca)
-                self.evaluate(cb)
-                for child in (ca, cb):
-                    sig = self._signature(child)
-                    if sig in seen:
-                        # One extra mutation attempt before rejecting a duplicate.
-                        self.mutate(child, min(2.6, inten * 1.25))
-                        self.evaluate(child)
+                if tabu is None:
+                    # Preserve the original GA path exactly when tabu_tenure=0.
+                    self.evaluate(ca)
+                    self.evaluate(cb)
+                    for child in (ca, cb):
                         sig = self._signature(child)
-                    if sig not in seen or len(next_pop) + 2 >= target_children:
-                        next_pop.append(child)
-                        seen.add(sig)
-                    if len(next_pop) >= target_children:
-                        break
+                        if sig in seen:
+                            # One extra mutation attempt before rejecting a duplicate.
+                            self.mutate(child, min(2.6, inten * 1.25))
+                            self.evaluate(child)
+                            sig = self._signature(child)
+                        if sig not in seen or len(next_pop) + 2 >= target_children:
+                            next_pop.append(child)
+                            seen.add(sig)
+                        if len(next_pop) >= target_children:
+                            break
+                else:
+                    # Screen recent accepted genotypes BEFORE costly exact decode.
+                    # Crossover, selection, mutation, and elitism remain GA.
+                    for child in (ca, cb):
+                        if self._deadline_reached(started):
+                            self.time_limit_hit = True
+                            break
+                        for retry in range(_TABU_RETRY_LIMIT + 1):
+                            if self._deadline_reached(started):
+                                self.time_limit_hit = True
+                                break
+                            sig = self._signature(child)
+                            tkey = self._tabu_signature(child)
+                            duplicate = tkey in tabu_seen
+                            forbidden = tabu.contains(tkey, gen)
+                            aspiration = False
+                            if forbidden and not duplicate:
+                                # Exact cached fitness can grant aspiration only
+                                # when the candidate strictly improves global best.
+                                cached = self.eval_cache.get(sig)
+                                aspiration = (
+                                    cached is not None
+                                    and math.isfinite(cached[0])
+                                    and cached[0] < best.fitness - EPS
+                                )
+                            if duplicate or (forbidden and not aspiration):
+                                if duplicate:
+                                    self.tabu_stats["duplicate_rejections"] += 1
+                                else:
+                                    self.tabu_stats["tabu_rejections"] += 1
+                                if retry < _TABU_RETRY_LIMIT:
+                                    self.mutate(child, min(2.6, inten * (1.2 + 0.2 * retry)))
+                                    continue
+                                break
+                            self.evaluate(child)
+                            next_pop.append(child)
+                            seen.add(sig)
+                            tabu_seen.add(tkey)
+                            tabu.add(tkey, gen)
+                            self.tabu_stats["tabu_admissions"] += 1
+                            if aspiration:
+                                self.tabu_stats["tabu_aspirations"] += 1
+                            break
+                        if self.time_limit_hit or len(next_pop) >= target_children:
+                            break
 
             while len(next_pop) < self.cfg.population_size:
                 if self._deadline_reached(started):
                     self.time_limit_hit = True
                     break
-                x = self._random_immigrant()
+                if tabu is None:
+                    x = self._random_immigrant()
+                else:
+                    # Prefer a non-tabu immigrant.  If no such candidate is
+                    # sampled in a bounded number of tries, relax tabu rather
+                    # than silently shrinking the population or looping forever.
+                    accepted = False
+                    x = None
+                    for _retry in range(_TABU_RETRY_LIMIT + 1):
+                        if self._deadline_reached(started):
+                            self.time_limit_hit = True
+                            break
+                        x = self._random_immigrant()
+                        tk = self._tabu_signature(x)
+                        if tk not in tabu_seen and not tabu.contains(tk, gen):
+                            accepted = True
+                            break
+                        self.tabu_stats["tabu_rejections"] += 1
+                    if self.time_limit_hit:
+                        break
+                    if not accepted:
+                        self.tabu_stats["tabu_relaxations"] += 1
                 self.evaluate(x)
                 next_pop.append(x)
+                if tabu is not None:
+                    tk = self._tabu_signature(x)
+                    tabu_seen.add(tk)
+                    tabu.add(tk, gen)
+                    self.tabu_stats["tabu_admissions"] += 1
 
             if self.time_limit_hit:
                 # The generation was cut short.  Do not top it up with random

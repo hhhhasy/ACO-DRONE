@@ -9,7 +9,7 @@ and the shared physical evaluation layer:
 - **GA** — literature-informed genetic algorithm.
 - **ALNS** — adaptive large neighbourhood search.
 - **VND** — variable neighbourhood descent using the ALNS neighbourhoods.
-- **VNS** — general variable neighbourhood search using the same neighbourhoods.
+- **PSO** — independent random-key particle swarm with its own balanced-insertion decoder.
 
 All algorithms use the same truck-drone physics, payload/battery limits,
 synchronisation rules and exact `evaluator.evaluate_solution()` objective.
@@ -24,7 +24,7 @@ synchronisation rules and exact `evaluator.evaluate_solution()` objective.
 | `ga_solver.py`, `ga_time_main.py` | GA solver / runner |
 | `alns_time_main.py` | ALNS runner (uses `model.py` / `operators.py`) |
 | `vnd_solver.py`, `vnd_time_main.py` | VND solver / runner |
-| `vns_solver.py`, `vns_time_main.py` | VNS solver / runner |
+| `pso_solver.py`, `pso_main.py`, `pso_time_main.py`, `pso_decoder.py` | PSO solver / runner / decoder |
 | `model.py`, `operators.py`, `utils.py` | ALNS model, neighbourhoods, shared utilities |
 | `load_data.py` | benchmark JSON loader / model kwargs |
 | `evaluator.py` | exact truck-drone feasibility and makespan evaluator |
@@ -89,10 +89,10 @@ VND:
 python vnd_time_main.py 大规模/A-n32-k5.json --time-limit 50 --seed 13
 ```
 
-VNS:
+PSO:
 
 ```bash
-python vns_time_main.py 大规模/A-n32-k5.json --time-limit 50 --seed 13
+python pso_time_main.py 大规模/A-n32-k5.json --time-limit 50 --swarm 30 --seed 13
 ```
 
 Batch comparison:
@@ -105,10 +105,8 @@ python run_five_time_budgets.py \
   --output-dir results
 ```
 
-Note: in the current `run_five_time_budgets.py`, `ALGORITHMS` is
-`("ALNS", "VND", "VNS")`; the GA and ACO command entries are present but
-commented out in the job list. Uncomment them to run all five algorithms in one
-batch.
+`run_five_time_budgets.py` supports `ACO, GA, ALNS, PSO, VND`; its default
+selection is `VND, PSO`. Pass `--algorithms ACO GA ALNS PSO VND` to run all five.
 
 ## ACO service-policy default
 
@@ -133,9 +131,20 @@ ACOConfig(service_policy_mode="fixed", adaptive_service_fraction=0.0)
 Historical adaptive-mode results are therefore not directly comparable with the
 current default; set the mode explicitly when reproducing older runs.
 
+## Experiment projects
+
+Two self-contained experiment projects are included as code only:
+
+- `convergence_experiment/` — seven-instance, five-algorithm convergence
+  histories and analysis;
+- `drone_sensitivity_experiment/` — battery/payload sensitivity experiment.
+
+The ACO pheromone ablation code is in `ACO_Ablation_Study/`. Its results and
+archives, as well as all result/analysis/figure directories of the experiment
+projects, are intentionally excluded from this repository.
+
 ## Outputs
 
 Runners write solution text, JSON summaries and convergence history under the
 chosen `--output-dir` (defaults are runner-specific). Generated results,
-archives, caches and the separate ablation-study directory are intentionally
-not part of this repository.
+archives and caches are not part of this repository.

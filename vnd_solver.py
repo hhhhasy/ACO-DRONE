@@ -31,10 +31,12 @@ No simulated annealing acceptance, adaptive operator weights, roulette operator
 selection, or ALNS score update is used here.  Feasibility and objective remain
 those of the shared evaluator through ``model.calculate_solution_time_cost``.
 """
+# Short-term solution tabu is active; no SA acceptance is added.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
+from collections import OrderedDict
 import math
 import random
 import time
@@ -47,6 +49,9 @@ except Exception:  # numpy is already required by the original project
 from utils import fast_copy_drone_routes
 
 EPS = 1e-9
+
+# Internal switch: 0 disables tabu; otherwise FIFO holds at most this many keys.
+_TABU_SIZE = 20
 
 
 @dataclass
@@ -109,6 +114,21 @@ class UserNeighborhoodVND:
     def _copy_drone_routes(drone_routes):
         return fast_copy_drone_routes(drone_routes)
 
+    @staticmethod
+    def _solution_signature(vehicle_routes, drone_routes):
+        veh = tuple(tuple(int(x) for x in r) for r in vehicle_routes)
+        dro = []
+        for group in drone_routes:
+            g = []
+            for s in group:
+                if not isinstance(s, (list, tuple)) or len(s) != 4:
+                    g.append(repr(s))
+                    continue
+                label, launch, delivery, rendez = s
+                g.append((str(label), int(launch), tuple(int(x) for x in delivery), int(rendez)))
+            dro.append(tuple(g))
+        return veh, tuple(dro)
+
     def _emit_history(self, event_type: str, iteration: int) -> None:
         callback = getattr(self, "history_callback", None)
         if callback is None:
@@ -136,11 +156,44 @@ class UserNeighborhoodVND:
             return False
         return True
 
+    def _reset_tabu(self):
+        self._tabu = OrderedDict()
+        self._tabu_streak = 0
+        self._tabu_rejected = False
+        self.tabu_stats = {"rejections": 0, "aspirations": 0, "admissions": 0, "relaxations": 0}
+
     def _objective(self, vehicle_routes, drone_routes) -> float:
+        self._tabu_rejected = False
         if not self._budget_available():
             return float("inf")
+        key = None
+        if _TABU_SIZE > 0:
+            key = self._solution_signature(vehicle_routes, drone_routes)
+            record = self._tabu.get(key)
+            if record is not None:
+                # The evaluator is deterministic for the same full solution.
+                # Exact remembered fitness permits aspiration without a new decode.
+                if record + EPS < getattr(self, "_last_emitted_best", -math.inf):
+                    self.tabu_stats["aspirations"] += 1
+                    return record
+                self._tabu_streak += 1
+                if self._tabu_streak < _TABU_SIZE:
+                    self.tabu_stats["rejections"] += 1
+                    self._tabu_rejected = True
+                    return float("inf")
+                # Bounded relaxation avoids an endless loop under evaluation-only
+                # budgets when every generated point is already forbidden.
+                del self._tabu[key]
+                self.tabu_stats["relaxations"] += 1
+        self._tabu_streak = 0
         self.evaluations += 1
-        return float(self.model.calculate_solution_time_cost(vehicle_routes, drone_routes))
+        value = float(self.model.calculate_solution_time_cost(vehicle_routes, drone_routes))
+        if key is not None and math.isfinite(value):
+            self._tabu[key] = value
+            while len(self._tabu) > _TABU_SIZE:
+                self._tabu.popitem(last=False)
+            self.tabu_stats["admissions"] += 1
+        return value
 
     def _sample_neighborhood(self, current_routes, current_drones, op_idx):
         """Generate one candidate with one of the user's original operator pairs."""
@@ -167,6 +220,7 @@ class UserNeighborhoodVND:
         self.improvements = 0
         self.limit_hit = False
         self.time_hit = False
+        self._reset_tabu()
         self._search_start = time.perf_counter()
 
         current_routes = self._copy_vehicle_routes(initial_routes)

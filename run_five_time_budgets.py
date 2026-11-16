@@ -13,7 +13,8 @@ from collections import defaultdict
 from typing import Iterable, List
 
 
-ALGORITHMS = ("ALNS","VND","VNS")
+SUPPORTED_ALGORITHMS = ("ACO", "GA", "ALNS", "PSO", "VND")
+ALGORITHMS = ("PSO",)
 
 
 
@@ -258,7 +259,7 @@ def write_statistics_summary(comparison_csv: str, output_dir: str) -> str:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=(
-            "Run ALNS/GA/ACO/VND/VNS under equal total wall-clock budgets. "
+            "Run ACO/GA/ALNS/PSO/VND under equal total wall-clock budgets. "
             "Use either positional DATA for one instance or --data-dir for a batch."
         )
     )
@@ -288,21 +289,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seeds", type=int, nargs="+", default=[13])
     p.add_argument("--population", type=int, default=30)
     p.add_argument("--ants", type=int, default=30)
+    p.add_argument("--swarm", type=int, default=30)
+    p.add_argument("--algorithms", nargs="+", choices=SUPPORTED_ALGORITHMS, default=list(ALGORITHMS))
     p.add_argument("--vnd-trials", type=int, default=20)
-    p.add_argument("--shake-trials", type=int, default=5)
-    p.add_argument("--local-trials", type=int, default=10)
-    p.add_argument("--output-dir", default="compare_results")
+    p.add_argument("--output-dir", default="PSO_results")
     return p
 
 
 def main() -> int:
     p = build_parser()
     args = p.parse_args()
+    global ALGORITHMS
+    ALGORITHMS = tuple(dict.fromkeys(args.algorithms))
+    if args.swarm < 2:
+        p.error("--swarm must be >= 2")
 
     if args.limit < 0:
         p.error("--limit must be >= 0")
-    if any(t <= 0 for t in args.times):
-        p.error("every --times value must be > 0")
+    if any(not math.isfinite(t) or t <= 0 for t in args.times):
+        p.error("every --times value must be finite and > 0")
     if args.population < 6:
         p.error("--population must be >= 6")
     if args.ants <= 0:
@@ -316,7 +321,7 @@ def main() -> int:
     here = os.path.dirname(os.path.abspath(__file__))
     py = sys.executable
 
-    print("\n===== Equal-time five-algorithm batch =====")
+    print("\n===== Equal-time selected-algorithm batch =====")
     print("datasets=%d" % len(datasets))
     for i, path in enumerate(datasets, 1):
         print("  [%d/%d] %s" % (i, len(datasets), path))
@@ -327,7 +332,7 @@ def main() -> int:
     total_jobs = len(datasets) * len(args.seeds) * len(args.times) * len(ALGORITHMS)
     job = 0
 
-    # Dataset-first order keeps all five algorithm comparisons for one instance
+    # Dataset-first order keeps all selected algorithm comparisons for one instance
     # adjacent in the console and makes interrupted batch runs easier to inspect.
     for data_path in datasets:
         base = os.path.splitext(os.path.basename(data_path))[0]
@@ -340,18 +345,14 @@ def main() -> int:
                     "--output-dir", args.output_dir,
                     "--quiet",
                 ]
-                commands = [
-                    ("ALNS", [py, os.path.join(here, "alns_time_main.py"), *common]),
-                    # ("GA", [py, os.path.join(here, "ga_time_main.py"), *common,
-                    #         "--population", str(args.population)]),
-                    # ("ACO", [py, os.path.join(here, "aco_time_main.py"), *common,
-                    #          "--ants", str(args.ants)]),
-                    ("VND", [py, os.path.join(here, "vnd_time_main.py"), *common,
-                            "--trials-per-neighborhood", str(args.vnd_trials)]),
-                    ("VNS", [py, os.path.join(here, "vns_time_main.py"), *common,
-                            "--shake-trials", str(args.shake_trials),
-                            "--local-trials", str(args.local_trials)]),           
-                ]
+                extras = {
+                    "ALNS": [], "GA": ["--population", str(args.population)],
+                    "ACO": ["--ants", str(args.ants)],
+                    "VND": ["--trials-per-neighborhood", str(args.vnd_trials)],
+                    "PSO": ["--swarm", str(args.swarm)],
+                }
+                commands = [(alg, [py, os.path.join(here, ("pso_main.py" if alg == "PSO" else alg.lower() + "_time_main.py")),
+                                   *common, *extras[alg]]) for alg in ALGORITHMS]
                 for alg, cmd in commands:
                     job += 1
                     print(

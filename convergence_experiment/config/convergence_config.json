@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "description": "Five-algorithm convergence experiment on seven representative instances (P-n40-k5, B-n57-k7, A-n69-k9, E-n101-k8, M-n200-k16, A-n80-k10, B-n63-k10). Formal runs use 100 s per algorithm/dataset/seed. Original physics: 200 Wh battery, 3 kg payload. ACO uses the current fixed100 service policy (100% strategy B, kappa=1).",
+  "datasets": [
+    {
+      "name": "P-n40-k5",
+      "path": "../大规模/P-n40-k5.json",
+      "expected_customers": 39,
+      "family": "P"
+    },
+    {
+      "name": "B-n57-k7",
+      "path": "../大规模/B-n57-k7.json",
+      "expected_customers": 56,
+      "family": "B"
+    },
+    {
+      "name": "A-n69-k9",
+      "path": "../大规模/A-n69-k9.json",
+      "expected_customers": 68,
+      "family": "A"
+    },
+    {
+      "name": "E-n101-k8",
+      "path": "../大规模/E-n101-k8.json",
+      "expected_customers": 100,
+      "family": "E"
+    },
+    {
+      "name": "M-n200-k16",
+      "path": "../大规模/M-n200-k16.json",
+      "expected_customers": 199,
+      "family": "M"
+    },
+    {
+      "name": "A-n80-k10",
+      "path": "../大规模/A-n80-k10.json",
+      "expected_customers": 79,
+      "family": "A"
+    },
+    {
+      "name": "B-n63-k10",
+      "path": "../大规模/B-n63-k10.json",
+      "expected_customers": 62,
+      "family": "B"
+    }
+  ],
+  "algorithms": [
+    "ACO",
+    "GA",
+    "ALNS",
+    "PSO",
+    "VND"
+  ],
+  "seeds": [
+    13,
+    21,
+    42,
+    50,
+    65,
+    77,
+    100,
+    123,
+    2024,
+    3407
+  ],
+  "time_budget_seconds": 100.0,
+  "physics": {
+    "battery_wh": 200.0,
+    "payload_kg": 3.0
+  },
+  "output_dir": "results",
+  "history_dir": "history",
+  "workers": 1,
+  "time_grid": {
+    "start": 0.0,
+    "stop": 100.0,
+    "step": 0.5
+  },
+  "report_time_nodes": [
+    1.0,
+    5.0,
+    10.0,
+    20.0,
+    30.0,
+    40.0,
+    50.0,
+    60.0,
+    80.0,
+    100.0
+  ],
+  "target_gap_percent": [
+    1.0,
+    2.0,
+    5.0
+  ],
+  "algorithm_parameters": {
+    "ACO": {
+      "ants": 30,
+      "alpha": 1.0,
+      "beta": 2.0,
+      "assignment_alpha": 1.0,
+      "service_alpha": 1.0,
+      "service_beta": 1.5,
+      "q0": 0.85,
+      "rho": 0.1,
+      "xi": 0.1,
+      "sector_bias": 2.0,
+      "candidate_list_size": 18,
+      "restart_after": 45,
+      "service_policy_mode": "fixed",
+      "adaptive_service_fraction": 1.0,
+      "service_proxy_strength": 1.0
+    },
+    "GA": {
+      "population_size": 30,
+      "elite_size": 6,
+      "tournament_size": 4
+    },
+    "ALNS": {
+      "initial_strategy": "farthest",
+      "clustering": "kmeans"
+    },
+    "VND": {
+      "trials_per_neighborhood": 20,
+      "initial_strategy": "farthest",
+      "clustering": "sweep"
+    },
+    "PSO": {
+      "swarm_size": 30,
+      "chi": 0.7298437881283576,
+      "phi1": 2.05,
+      "phi2": 2.05,
+      "velocity_limit": 0.25,
+      "seed_fraction": 0.5,
+      "perturbation_sigma": 0.15,
+      "cache_size": 1024
+    }
+  }
+}

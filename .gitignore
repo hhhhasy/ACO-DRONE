@@ -5,15 +5,26 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Generated experiment outputs
+# Generated outputs
 results/
 aco_results*/
 compare_results/
 time_budget_results*/
 iteration_results/
+PSO_results/
+figures/
 *.zip
 
-# Separate ablation study / extra experiments
-ACO_Ablation_Study/
-convergence_experiment/
-drone_sensitivity_experiment/
+# Experiment outputs / archives (source code is tracked)
+convergence_experiment/results/
+convergence_experiment/history/
+convergence_experiment/analysis/
+convergence_experiment/figures/
+convergence_experiment/archive_*/
+drone_sensitivity_experiment/results*/
+drone_sensitivity_experiment/analysis*/
+drone_sensitivity_experiment/figures*/
+drone_sensitivity_experiment/archive_*/
+ACO_Ablation_Study/results/
+ACO_Ablation_Study/results_archive/
+ACO_Ablation_Study/.git/

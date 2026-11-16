@@ -27,7 +27,7 @@ plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
 
 class vrp_with_drones:
-    """纯 ALNS 模型：单起点初始化 + 自适应算子选择 + SA 接受机制。
+    """ALNS + SA + Tabu：自适应算子、逐代降温、近期完整解记忆。
 
     单位：距离 m，时间 s，速度 m/s，质量 kg，功率 W，能量 Wh。
     坐标与需求由 ``physicalize_datasets.py`` 一次性物理化，运行时代码不再做
@@ -106,11 +106,13 @@ class vrp_with_drones:
             self.score_interval = 30
             self.Tmin = 0.8
             self.gamma = 0.98
+            # Tabu tenure in ALNS generations; 0 disables Tabu for ablation.
+            self.tabu_tenure = 20
             self.reaction_param = 0.5
             self.operator_rho = [1.0] * len(self.operator_pairs)
             self.operator_score_accum = [0.0] * len(self.operator_pairs)
             self.operator_uses = [0] * len(self.operator_pairs)
-            self.score_weights = score_weights or {'w1': 20, 'w2': 7, 'w3': 3, 'w4': 0}
+            self.score_weights = score_weights or {'w1': 10, 'w2': 7, 'w3': 3, 'w4': 0}
 
             # Diagnostics of the most recent generate_initial_solution() call:
             # the sweep log lines and the winning rotation.  Both stay None when
@@ -140,7 +142,7 @@ class vrp_with_drones:
                 f"Unsupported initial_strategy={initial_strategy!r}; use 'farthest' or 'nearest'."
             )
 
-    def generate_initial_solution(self, initial_strategy="farthest", verbose=False,
+    def generate_initial_solution(self, initial_strategy="nearest", verbose=False,
                                   clustering_method=None, rotation=None):
             """Build a truck reference solution and derive energy-feasible sorties.
 
@@ -420,6 +422,29 @@ class vrp_with_drones:
             self.operator_score_accum = [0.0] * len(self.operator_pairs)
             self.operator_uses = [0] * len(self.operator_pairs)
 
+    @staticmethod
+    def _solution_signature(vehicle_routes, drone_routes):
+            """Exact, order-preserving identity for an ALNS candidate.
+
+            Do not sort sorties: for the same drone their input order can affect
+            launch/recovery sequencing and therefore physical feasibility.
+            Include all truck assignments, truck visit orders, drone labels,
+            launch/recovery nodes, and each sortie's delivery order.
+            """
+            truck_part = tuple(
+                tuple(int(node) for node in route)
+                for route in vehicle_routes
+            )
+            drone_part = tuple(
+                tuple(
+                    (str(sortie[0]), int(sortie[1]),
+                     tuple(int(node) for node in sortie[2]), int(sortie[3]))
+                    for sortie in vehicle_sorties
+                )
+                for vehicle_sorties in drone_routes
+            )
+            return truck_part, drone_part
+
     def local_search(
             self,
             initial_routes,
@@ -436,6 +461,7 @@ class vrp_with_drones:
             return_info=False,
             target_time=None,
             history_callback=None,
+            tabu_tenure=None,
         ):
             search_start = time.perf_counter()
 
@@ -448,6 +474,9 @@ class vrp_with_drones:
             gamma = self.gamma if gamma is None else gamma
             Tmin = self.Tmin if Tmin is None else Tmin
             reaction_param = self.reaction_param if reaction_param is None else reaction_param
+            tabu_tenure = self.tabu_tenure if tabu_tenure is None else int(tabu_tenure)
+            if tabu_tenure < 0:
+                raise ValueError("tabu_tenure must be >= 0; use 0 to disable Tabu")
 
             current_routes = [list(route) for route in initial_routes]
             current_drones = fast_copy_drone_routes(initial_drones)
@@ -457,6 +486,22 @@ class vrp_with_drones:
             best_routes = [list(route) for route in current_routes]
             best_drones = fast_copy_drone_routes(current_drones)
             best_time = current_time
+
+            # Generation-indexed tabu memory, reset for each local_search call.
+            # An accepted solution is forbidden for the NEXT `tabu_tenure`
+            # generations, except when it beats the global-best objective.
+            # At most one candidate is accepted per generation, so expiry
+            # pruning bounds memory at O(tabu_tenure).
+            tabu_expiry = {}
+            current_signature = None
+            if tabu_tenure:
+                current_signature = self._solution_signature(current_routes, current_drones)
+                tabu_expiry[current_signature] = tabu_tenure
+            tabu_rejections = 0
+            tabu_aspirations = 0
+            tabu_noop_rejections = 0
+            tabu_admissions = 0
+            tabu_max_active = len(tabu_expiry)
 
             time_to_best_seconds = 0.0
             best_iteration = 0
@@ -506,6 +551,12 @@ class vrp_with_drones:
                     break
                 iterations_used = i + 1
 
+                # Forget solutions whose short-term tabu tenure has elapsed.
+                if tabu_tenure:
+                    for key, expiry in list(tabu_expiry.items()):
+                        if expiry <= i:
+                            del tabu_expiry[key]
+
                 op_idx = self.choose_operator_index()
                 destroy_op, repair_op, op_name = self.operator_pairs[op_idx]
                 score = self.score_weights["w4"]
@@ -523,14 +574,29 @@ class vrp_with_drones:
                     evaluations += 1
                     new_time = self.calculate_solution_time_cost(new_routes, new_drones)
 
-                    # Physical feasibility barrier: a candidate that violates the
-                    # payload / flight-energy / hover / battery constraints has
-                    # objective ``inf`` and is rejected outright -- the simulated
-                    # annealing temperature can never make it acceptable.
+                    # Apply the physical-feasibility gate before Tabu/SA.
+                    # An infeasible candidate is never accepted at any T.
+                    if not math.isfinite(new_time):
+                        continue
+
+                    new_signature = None
+                    if tabu_tenure:
+                        new_signature = self._solution_signature(new_routes, new_drones)
+                        # A no-op is useless even if its old tabu entry expired.
+                        if new_signature == current_signature:
+                            tabu_noop_rejections += 1
+                            continue
+                        is_tabu = tabu_expiry.get(new_signature, -1) > i
+                        aspiration = new_time < best_time - 1e-12
+                        if is_tabu and not aspiration:
+                            tabu_rejections += 1
+                            continue
+                        if is_tabu and aspiration:
+                            tabu_aspirations += 1
+
+                    # All attempts in one generation use the same SA temperature.
+                    # The normal SA acceptance rule still governs non-tabu moves.
                     accept, delta = self._acceptance_decision(new_time, current_time, T)
-                    if delta is not None and delta >= 0:
-                        # Cooling happens on every non-improving evaluation.
-                        T = max(T * gamma, Tmin)
                     if not accept:
                         continue
 
@@ -545,6 +611,13 @@ class vrp_with_drones:
                     current_routes = [list(route) for route in new_routes]
                     current_drones = fast_copy_drone_routes(new_drones)
                     current_time = new_time
+                    if tabu_tenure:
+                        current_signature = new_signature
+                        # +1 means accepted at generation i is tabu for
+                        # generations i+1 through i+tabu_tenure inclusive.
+                        tabu_expiry[new_signature] = i + tabu_tenure + 1
+                        tabu_admissions += 1
+                        tabu_max_active = max(tabu_max_active, len(tabu_expiry))
 
                     if new_time < best_time - 1e-12:
                         best_routes = [list(route) for route in new_routes]
@@ -575,6 +648,9 @@ class vrp_with_drones:
                 if sum(self.operator_uses) >= score_interval:
                     self._update_operator_weights(reaction_param)
                 i += 1
+                # Cool exactly once after each ALNS iteration, regardless of
+                # whether its attempts improved, were rejected, or were infeasible.
+                T = max(T * gamma, Tmin)
 
             # Keep the wall-clock budget strict: deterministic post-processing is
             # only attempted when there is still time left in the static-search
@@ -608,6 +684,13 @@ class vrp_with_drones:
                 "best_iteration": best_iteration,
                 "iterations_used": iterations_used,
                 "evaluations": evaluations,
+                "tabu_tenure": tabu_tenure,
+                "tabu_rejections": tabu_rejections,
+                "tabu_noop_rejections": tabu_noop_rejections,
+                "tabu_aspirations": tabu_aspirations,
+                "tabu_admissions": tabu_admissions,
+                "tabu_max_active": tabu_max_active,
+                "temperature_final": T,
             }
             if return_info:
                 return best_routes, best_drones, best_time, info

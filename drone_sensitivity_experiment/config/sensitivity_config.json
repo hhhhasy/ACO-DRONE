@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "description": "Drone resource sensitivity experiment on M-n151-k12. Formal runs use 50 s per algorithm/seed/parameter combination. ACO uses the current fixed100 service policy (100% strategy B, kappa=1). This file defines the 15 unique (battery, payload) combinations.",
+  "dataset": "../大规模/M-n151-k12.json",
+  "dataset_name": "M-n151-k12",
+  "algorithms": [
+    "ACO",
+    "GA",
+    "ALNS",
+    "PSO",
+    "VND"
+  ],
+  "battery_wh_levels": [
+    100.0,
+    125.0,
+    150.0,
+    175.0,
+    200.0,
+    225.0,
+    250.0
+  ],
+  "payload_kg_levels": [
+    1.0,
+    1.5,
+    2.0,
+    2.5,
+    3.0,
+    3.5,
+    4.0,
+    4.5,
+    5.0
+  ],
+  "baseline": {
+    "battery_wh": 200.0,
+    "payload_kg": 3.0
+  },
+  "seeds": [
+    13,
+    21,
+    42,
+    50,
+    65,
+    77,
+    100,
+    123,
+    2024,
+    3407
+  ],
+  "time_budget_seconds": 50.0,
+  "output_dir": "results",
+  "workers": 1,
+  "algorithm_parameters": {
+    "ACO": {
+      "ants": 30,
+      "alpha": 1.0,
+      "beta": 2.0,
+      "assignment_alpha": 1.0,
+      "service_alpha": 1.0,
+      "service_beta": 1.5,
+      "q0": 0.85,
+      "rho": 0.1,
+      "xi": 0.1,
+      "sector_bias": 2.0,
+      "candidate_list_size": 18,
+      "restart_after": 45,
+      "service_policy_mode": "fixed",
+      "adaptive_service_fraction": 1.0,
+      "service_proxy_strength": 1.0
+    },
+    "GA": {
+      "population_size": 30,
+      "elite_size": 6,
+      "tournament_size": 4
+    },
+    "ALNS": {
+      "initial_strategy": "farthest",
+      "clustering": "kmeans"
+    },
+    "VND": {
+      "trials_per_neighborhood": 20,
+      "initial_strategy": "farthest",
+      "clustering": "sweep"
+    },
+    "PSO": {
+      "swarm_size": 30,
+      "chi": 0.7298437881283576,
+      "phi1": 2.05,
+      "phi2": 2.05,
+      "velocity_limit": 0.25,
+      "seed_fraction": 0.5,
+      "perturbation_sigma": 0.15,
+      "cache_size": 1024
+    }
+  },
+  "analysis_dir": "analysis_M-n151-k12",
+  "figures_dir": "figures_M-n151-k12"
+}
